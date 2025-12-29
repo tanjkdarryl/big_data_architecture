@@ -2,6 +2,28 @@
 Bitcoin Blockchain Data Collector
 Collects blocks and transactions from Bitcoin via Blockstream API
 
+=== 5Vs OF BIG DATA IN THIS MODULE ===
+
+This collector demonstrates multiple Vs of big data:
+
+VOLUME:   Bitcoin's blockchain is ~500GB+ and growing. Each block contains thousands
+          of transactions. We sample 25 transactions per block for educational purposes,
+          but production systems process all data.
+
+VELOCITY: Bitcoin produces ~1 block every 10 minutes - relatively slow compared to
+          Solana (~2.5 blocks/second). This affects our collection strategy and
+          how often we poll for new data.
+
+VARIETY:  Bitcoin uses the UTXO (Unspent Transaction Output) model - fundamentally
+          different from Ethereum's account model. This collector transforms Bitcoin's
+          unique data structure into our unified schema.
+
+VERACITY: We validate block hashes, check timestamps, verify transaction counts,
+          and detect anomalies. See DataValidator integration below.
+
+VALUE:    The collected data enables analysis of transaction fees, network congestion,
+          mining difficulty trends, and UTXO patterns.
+
 === EDUCATIONAL OVERVIEW ===
 
 Bitcoin uses the UTXO (Unspent Transaction Output) model, fundamentally different
@@ -31,6 +53,8 @@ new UTXOs (outputs).
 import logging
 from datetime import datetime
 import aiohttp
+
+from .data_validator import DataValidator, log_quality_issue
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +88,10 @@ class BitcoinCollector:
         self.enabled = enabled
         # Track last processed block to collect sequentially
         self.last_block_height = None
+
+        # [VERACITY] Initialize data validator for quality checks
+        # This ensures we catch bad data before it enters our analytics database
+        self.validator = DataValidator()
 
     async def collect(self, client):
         """
@@ -150,6 +178,36 @@ class BitcoinCollector:
                         'transaction_count': block['tx_count']
                     }
 
+                    # ================================================================
+                    # [VERACITY] Validate block data before insertion
+                    # ================================================================
+                    # This is a critical step in ensuring data quality. We check:
+                    # - All required fields are present
+                    # - Values are within expected ranges
+                    # - Timestamp is reasonable
+                    # - Hash formats are valid
+                    block_validation = self.validator.validate_bitcoin_block(block_data)
+
+                    if not block_validation.is_valid:
+                        logger.warning(
+                            f"[VERACITY] Bitcoin block {block_height} has quality issues: "
+                            f"{block_validation.issues}"
+                        )
+                        # Log quality issue for tracking and analysis
+                        log_quality_issue(
+                            source='bitcoin',
+                            record_type='block',
+                            record_id=str(block_height),
+                            result=block_validation,
+                            client=client
+                        )
+
+                    if block_validation.warnings:
+                        logger.info(
+                            f"[VERACITY] Bitcoin block {block_height} warnings: "
+                            f"{block_validation.warnings}"
+                        )
+
                     # Convert dict to list for clickhouse_connect (required when table has DEFAULT columns)
                     columns = ['block_height', 'block_hash', 'timestamp', 'previous_block_hash',
                              'merkle_root', 'difficulty', 'nonce', 'size', 'weight', 'transaction_count']
@@ -210,6 +268,15 @@ class BitcoinCollector:
                                 'output_count': len(tx['vout']),
                                 'timestamp': datetime.fromtimestamp(block['timestamp'])
                             }
+
+                            # [VERACITY] Validate transaction before adding to batch
+                            tx_validation = self.validator.validate_bitcoin_transaction(tx_record)
+                            if not tx_validation.is_valid:
+                                logger.debug(
+                                    f"[VERACITY] Bitcoin tx {tx['txid'][:16]}... has issues: "
+                                    f"{tx_validation.issues}"
+                                )
+
                             tx_data.append(tx_record)
                         except Exception as e:
                             # Log but continue - don't let one bad transaction stop collection

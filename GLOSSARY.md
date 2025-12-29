@@ -4,14 +4,107 @@ A comprehensive glossary of terms used in this project, organized by category. D
 
 ## Table of Contents
 
-1. [Ethereum-Specific Terms](#ethereum-specific-terms)
-2. [Bitcoin-Specific Terms](#bitcoin-specific-terms)
-3. [Solana-Specific Terms](#solana-specific-terms)
-4. [Database & ClickHouse Terms](#database--clickhouse-terms)
-5. [Data Engineering Terms](#data-engineering-terms)
-6. [API & Web Terms](#api--web-terms)
+1. [The 5Vs of Big Data](#the-5vs-of-big-data)
+2. [Ethereum-Specific Terms](#ethereum-specific-terms)
+3. [Bitcoin-Specific Terms](#bitcoin-specific-terms)
+4. [Solana-Specific Terms](#solana-specific-terms)
+5. [Database & ClickHouse Terms](#database--clickhouse-terms)
+6. [Data Engineering Terms](#data-engineering-terms)
+7. [API & Web Terms](#api--web-terms)
 
 **Note:** For blockchain fundamentals (blocks, transactions, hashing, consensus), see the Background section in README.md.
+
+---
+
+## The 5Vs of Big Data
+
+The **5Vs** are the defining characteristics of Big Data. Understanding these concepts is essential for designing and building data systems that can handle modern data challenges.
+
+### Volume
+
+The **scale** or **amount** of data being processed.
+
+| Aspect | Description |
+|--------|-------------|
+| **Definition** | How much data is generated, stored, and processed |
+| **Scale** | Terabytes, petabytes, or exabytes |
+| **Challenges** | Storage costs, query performance, backup/recovery |
+| **Solutions** | Distributed storage, compression, partitioning |
+
+**In This Project:** Bitcoin's full blockchain is ~500GB+. We use ClickHouse's columnar storage with compression (80-95% reduction) and monthly partitioning to manage volume.
+
+### Velocity
+
+The **speed** at which data is generated and must be processed.
+
+| Aspect | Description |
+|--------|-------------|
+| **Definition** | Rate of data creation and required processing speed |
+| **Types** | Batch (hourly/daily), Streaming (real-time), Micro-batch |
+| **Challenges** | Latency, ordering, backpressure |
+| **Solutions** | Async processing, message queues, stream processing |
+
+**In This Project:** Solana produces ~2.5 blocks/second while Bitcoin produces ~1 block/10 minutes. Our async collectors handle these different velocities using asyncio.gather() for concurrent processing.
+
+### Variety
+
+The **diversity** of data types, formats, and structures.
+
+| Aspect | Description |
+|--------|-------------|
+| **Definition** | Different formats, schemas, and data models |
+| **Types** | Structured (tables), Semi-structured (JSON), Unstructured (text) |
+| **Challenges** | Schema evolution, data integration, normalization |
+| **Solutions** | ETL pipelines, schema registries, data catalogs |
+
+**In This Project:**
+- Bitcoin: UTXO model, REST API, Satoshis
+- Solana: Account model, JSON-RPC, Lamports, slots vs blocks
+- Ethereum: Account model, JSON-RPC, Wei, gas
+
+Each blockchain has fundamentally different data structures that we normalize into a unified schema.
+
+### Veracity
+
+The **quality**, **accuracy**, and **trustworthiness** of data.
+
+| Aspect | Description |
+|--------|-------------|
+| **Definition** | How reliable and accurate is the data? |
+| **Dimensions** | Completeness, accuracy, consistency, timeliness, validity |
+| **Challenges** | Missing data, duplicates, outliers, corruption |
+| **Solutions** | Validation, quality metrics, data lineage, auditing |
+
+**Quality Dimensions:**
+
+| Dimension | Question | Example Check |
+|-----------|----------|---------------|
+| **Completeness** | Are all required fields present? | Block has hash, height, timestamp |
+| **Accuracy** | Are values within expected ranges? | Difficulty > 0, fee >= 0 |
+| **Consistency** | Do related fields agree? | block_height <= slot |
+| **Timeliness** | Is the timestamp reasonable? | Not in future, not too old |
+| **Validity** | Does data match expected format? | Hash is 64 hex characters |
+
+**In This Project:** The `DataValidator` class (in `data_validator.py`) implements veracity checks for all blockchain data. Quality issues are logged to the `data_quality` table for monitoring and analysis.
+
+### Value
+
+The **business insights** and **actionable intelligence** derived from data.
+
+| Aspect | Description |
+|--------|-------------|
+| **Definition** | What meaningful information can we extract? |
+| **Metrics** | ROI, decision quality, competitive advantage |
+| **Challenges** | Finding signal in noise, visualization, interpretation |
+| **Solutions** | Analytics, machine learning, dashboards, reports |
+
+**In This Project:**
+- Fee analysis: Which blockchain is cheaper to transact on?
+- Throughput comparison: Which chain processes more transactions?
+- Network health: What's Solana's transaction success rate?
+- Compression efficiency: How well does blockchain data compress?
+
+The dashboard and sample queries transform raw blockchain data into actionable insights.
 
 ---
 

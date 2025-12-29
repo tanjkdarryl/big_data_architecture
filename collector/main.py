@@ -2,6 +2,32 @@
 Blockchain Data Collector Service
 Collects data from Ethereum, Bitcoin, and Solana blockchains via RPC
 
+=== THE 5Vs OF BIG DATA ===
+
+This project demonstrates the 5Vs framework - the defining characteristics of Big Data:
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  VOLUME     │ The sheer scale of data. Blockchains generate terabytes daily.   │
+│             │ Bitcoin: ~500GB total chain, Solana: grows ~100GB/month.          │
+│             │ See: ClickHouse columnar storage, compression, partitioning.      │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  VELOCITY   │ The speed of data generation and processing.                      │
+│             │ Bitcoin: ~1 block/10min, Solana: ~2.5 blocks/second.              │
+│             │ See: async/await patterns, concurrent collection, micro-batching. │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  VARIETY    │ Different data types, formats, and structures.                    │
+│             │ Bitcoin: UTXO model, REST API. Solana: Account model, JSON-RPC.   │
+│             │ See: Multiple collectors with unified schema output.              │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  VERACITY   │ Data quality, accuracy, and trustworthiness.                      │
+│             │ Are blocks valid? Are timestamps reasonable? Is data complete?    │
+│             │ See: DataValidator class, quality checks, anomaly detection.      │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  VALUE      │ Extracting meaningful insights from raw data.                     │
+│             │ Fee trends, transaction patterns, network health metrics.         │
+│             │ See: Dashboard analytics, SQL queries, cross-chain comparisons.   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
 === EDUCATIONAL OVERVIEW ===
 
 This is the central orchestration service that coordinates data collection from
@@ -77,9 +103,9 @@ def get_clickhouse_client():
     """
     Create a ClickHouse client connection.
 
-    EDUCATIONAL NOTE - Why ClickHouse?
+    [VOLUME] Why ClickHouse for Big Data?
     ClickHouse is a columnar OLAP (Online Analytical Processing) database,
-    designed for:
+    designed for handling massive VOLUMES of data:
     - Fast analytical queries on large datasets (millions to billions of rows)
     - Excellent compression (often 10-20x for blockchain data)
     - Real-time data insertion with eventual consistency
@@ -182,6 +208,25 @@ async def collect_data():
     """
     Main data collection loop.
 
+    === 5Vs IN ACTION ===
+
+    This function demonstrates how the 5Vs manifest in a real data pipeline:
+
+    [VELOCITY] Micro-batch Pattern:
+    We poll for new data every N seconds (configurable). This balances:
+    - Timeliness: Get data quickly for near-real-time analytics
+    - Efficiency: Batch multiple records per insert
+    - Resource usage: Don't overwhelm APIs with constant requests
+
+    [VARIETY] Multi-Source Collection:
+    asyncio.gather() collects from Bitcoin (REST), Solana (JSON-RPC), and
+    Ethereum (JSON-RPC) concurrently. Each has different data structures
+    that we normalize into a unified schema.
+
+    [VOLUME] Handling Scale:
+    Safety limits prevent collecting more than we can process. The
+    collection_state table tracks cumulative volume.
+
     EDUCATIONAL NOTE - Event Loop Pattern:
     This is a classic "poll and collect" pattern common in data engineering:
     1. Sleep for an interval
@@ -220,7 +265,16 @@ async def collect_data():
                 is_collecting = False
                 break
 
-            # EDUCATIONAL NOTE - Concurrent vs Parallel Execution:
+            # ================================================================
+            # [VARIETY] Concurrent Multi-Source Collection
+            # ================================================================
+            #
+            # This is where VARIETY manifests - we collect from multiple blockchains
+            # with different:
+            # - Data models (Bitcoin UTXO vs Solana accounts)
+            # - API protocols (REST vs JSON-RPC)
+            # - Block structures (merkle_root vs slot/block_height)
+            # - Transaction formats (inputs/outputs vs signatures)
             #
             # asyncio.gather() runs coroutines CONCURRENTLY, not in parallel.
             # - Concurrent: Multiple tasks make progress by switching during I/O waits

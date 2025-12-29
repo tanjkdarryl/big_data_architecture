@@ -133,6 +133,41 @@ CREATE TABLE IF NOT EXISTS collection_state (
 ) ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY id;
 
+-- ========================================
+-- Data Quality Table (VERACITY - 5Vs)
+-- ========================================
+-- This table tracks data quality issues detected during collection.
+-- It implements the VERACITY aspect of the 5Vs of Big Data framework.
+--
+-- VERACITY refers to the trustworthiness and quality of data.
+-- In a big data pipeline, we must track and measure data quality to:
+-- 1. Identify problematic data sources
+-- 2. Monitor quality trends over time
+-- 3. Alert on quality degradation
+-- 4. Enable root cause analysis of data issues
+--
+-- Quality Dimensions Tracked:
+-- - Completeness: Missing required fields
+-- - Accuracy: Values outside expected ranges
+-- - Consistency: Conflicting data (e.g., block_height > slot)
+-- - Timeliness: Stale or future-dated records
+-- - Validity: Incorrect formats (e.g., invalid hash)
+CREATE TABLE IF NOT EXISTS data_quality (
+    detected_at DateTime,
+    source String,                          -- bitcoin, solana, ethereum
+    record_type String,                     -- block, transaction
+    record_id String,                       -- block_height, slot, tx_hash, signature
+    quality_level String,                   -- high, medium, low, invalid
+    quality_score Float32,                  -- 0.0 to 1.0 numeric score
+    issue_count UInt8,                      -- number of critical issues
+    warning_count UInt8,                    -- number of warnings
+    issues String,                          -- semicolon-separated list of issues
+    warnings String,                        -- semicolon-separated list of warnings
+    collected_at DateTime DEFAULT now()
+) ENGINE = MergeTree()
+ORDER BY (detected_at, source, record_type)
+PARTITION BY toYYYYMM(detected_at);
+
 -- Initialize collection state
-INSERT INTO collection_state (id, is_running, total_records, total_size_bytes) 
+INSERT INTO collection_state (id, is_running, total_records, total_size_bytes)
 VALUES (1, false, 0, 0);

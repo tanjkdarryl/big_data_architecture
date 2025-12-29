@@ -29,6 +29,13 @@ Before starting these exercises, ensure you have:
 - [Exercise 8: Storage and Compression](#exercise-8-storage-and-compression)
 - [Exercise 9: Performance Metrics](#exercise-9-performance-metrics)
 
+### The 5Vs of Big Data
+- [Exercise 10: Understanding Volume](#exercise-10-understanding-volume)
+- [Exercise 11: Measuring Velocity](#exercise-11-measuring-velocity)
+- [Exercise 12: Exploring Variety](#exercise-12-exploring-variety)
+- [Exercise 13: Veracity and Data Quality](#exercise-13-veracity-and-data-quality)
+- [Exercise 14: Extracting Value](#exercise-14-extracting-value)
+
 ### Extension Challenges
 - [Challenge A: Add a New Metric](#challenge-a-add-a-new-metric)
 - [Challenge B: Create a Custom Query](#challenge-b-create-a-custom-query)
@@ -406,6 +413,367 @@ Try modifying these queries to:
 - What causes collection errors?
 - How does the collection interval (5 seconds default) affect throughput?
 - What might be the bottleneck: API rate limits or database insertion?
+
+---
+
+## The 5Vs of Big Data
+
+These exercises help you understand the 5Vs framework through hands-on exploration of your collected data.
+
+### Exercise 10: Understanding Volume
+
+**Learning Objectives:**
+- Quantify data volume in the system
+- Understand compression ratios and storage efficiency
+- Project storage requirements for production scale
+
+**Instructions:**
+
+1. Calculate total data volume collected:
+   ```sql
+   SELECT
+       'Bitcoin Blocks' as table_name,
+       count() as row_count,
+       formatReadableSize(sum(length(block_hash) + length(merkle_root) +
+                              length(previous_block_hash))) as estimated_string_size
+   FROM bitcoin_blocks
+   UNION ALL
+   SELECT
+       'Solana Blocks',
+       count(),
+       formatReadableSize(sum(length(block_hash) + length(previous_block_hash)))
+   FROM solana_blocks
+   UNION ALL
+   SELECT
+       'Bitcoin Transactions',
+       count(),
+       formatReadableSize(sum(length(tx_hash) + length(block_hash)))
+   FROM bitcoin_transactions
+   UNION ALL
+   SELECT
+       'Solana Transactions',
+       count(),
+       formatReadableSize(sum(length(signature) + length(block_hash)))
+   FROM solana_transactions;
+   ```
+
+2. Analyze compression effectiveness:
+   ```sql
+   SELECT
+       table,
+       sum(rows) as total_rows,
+       formatReadableSize(sum(bytes)) as uncompressed,
+       formatReadableSize(sum(bytes_on_disk)) as compressed,
+       round(sum(bytes) / sum(bytes_on_disk), 2) as compression_ratio
+   FROM system.parts
+   WHERE database = 'blockchain_data' AND active = 1
+   GROUP BY table
+   ORDER BY sum(bytes) DESC;
+   ```
+
+3. Project storage needs: If Bitcoin's full blockchain is ~500GB and Solana grows ~100GB/month, estimate how much compressed storage you'd need for 1 year of full chain data.
+
+**Questions to Consider:**
+- Why does blockchain data compress so well?
+- How does partitioning help manage volume?
+- What happens when volume exceeds available storage?
+
+---
+
+### Exercise 11: Measuring Velocity
+
+**Learning Objectives:**
+- Measure data generation rates across chains
+- Understand collection throughput
+- Compare high-velocity vs low-velocity data sources
+
+**Instructions:**
+
+1. Calculate block production rates:
+   ```sql
+   SELECT
+       'Bitcoin' as chain,
+       count() as blocks,
+       min(timestamp) as first_block,
+       max(timestamp) as last_block,
+       dateDiff('minute', min(timestamp), max(timestamp)) as minutes_spanned,
+       round(count() * 60.0 / dateDiff('minute', min(timestamp), max(timestamp)), 2) as blocks_per_hour
+   FROM bitcoin_blocks
+   WHERE timestamp > now() - INTERVAL 1 HOUR
+   UNION ALL
+   SELECT
+       'Solana',
+       count(),
+       min(timestamp),
+       max(timestamp),
+       dateDiff('minute', min(timestamp), max(timestamp)),
+       round(count() * 60.0 / dateDiff('minute', min(timestamp), max(timestamp)), 2)
+   FROM solana_blocks
+   WHERE timestamp > now() - INTERVAL 1 HOUR;
+   ```
+
+2. Measure transaction velocity:
+   ```sql
+   SELECT
+       source,
+       count() as transactions,
+       round(count() / 60.0, 2) as tx_per_second
+   FROM (
+       SELECT 'bitcoin' as source, timestamp FROM bitcoin_transactions
+       WHERE timestamp > now() - INTERVAL 1 MINUTE
+       UNION ALL
+       SELECT 'solana', timestamp FROM solana_transactions
+       WHERE timestamp > now() - INTERVAL 1 MINUTE
+   )
+   GROUP BY source;
+   ```
+
+3. Analyze collection performance:
+   ```sql
+   SELECT
+       source,
+       round(avg(collection_duration_ms), 2) as avg_duration_ms,
+       round(avg(records_collected), 2) as avg_records,
+       round(avg(records_collected) * 1000.0 / avg(collection_duration_ms), 2) as records_per_second
+   FROM collection_metrics
+   WHERE metric_time > now() - INTERVAL 10 MINUTE
+   GROUP BY source;
+   ```
+
+**Questions to Consider:**
+- Which blockchain generates data faster?
+- How does velocity affect your collection strategy?
+- What would happen if Solana's velocity doubled?
+
+---
+
+### Exercise 12: Exploring Variety
+
+**Learning Objectives:**
+- Compare data structures across blockchains
+- Understand schema differences
+- Appreciate the challenge of data normalization
+
+**Instructions:**
+
+1. Compare block structures:
+   ```sql
+   -- Bitcoin block structure
+   DESCRIBE bitcoin_blocks;
+
+   -- Solana block structure
+   DESCRIBE solana_blocks;
+   ```
+
+2. Identify unique fields per chain:
+   ```sql
+   -- Bitcoin-specific: merkle_root, nonce, difficulty (PoW)
+   SELECT
+       'Bitcoin' as chain,
+       avg(difficulty) as avg_difficulty,
+       max(nonce) as max_nonce,
+       count(DISTINCT merkle_root) as unique_merkle_roots
+   FROM bitcoin_blocks;
+
+   -- Solana-specific: slot, parent_slot, skipped slots
+   SELECT
+       'Solana' as chain,
+       avg(slot - parent_slot - 1) as avg_skipped_slots,
+       max(slot - block_height) as total_skipped_slots,
+       count() as total_blocks
+   FROM solana_blocks;
+   ```
+
+3. Compare transaction models:
+   ```sql
+   -- Bitcoin UTXO model (inputs/outputs)
+   SELECT
+       'Bitcoin' as chain,
+       round(avg(input_count), 2) as avg_inputs,
+       round(avg(output_count), 2) as avg_outputs,
+       round(avg(fee), 2) as avg_fee_satoshis
+   FROM bitcoin_transactions;
+
+   -- Solana signature model (success/failed)
+   SELECT
+       'Solana' as chain,
+       countIf(status = 'success') as successful,
+       countIf(status = 'failed') as failed,
+       round(avg(fee), 2) as avg_fee_lamports
+   FROM solana_transactions;
+   ```
+
+**Questions to Consider:**
+- Why does Bitcoin have merkle_root but Solana doesn't?
+- What does the UTXO model tell us that Solana's model doesn't?
+- How would you add Ethereum data with gas and Wei to this schema?
+
+---
+
+### Exercise 13: Veracity and Data Quality
+
+**Learning Objectives:**
+- Understand data quality dimensions
+- Query the data quality table
+- Identify and investigate quality issues
+
+**Instructions:**
+
+1. Check overall data quality:
+   ```sql
+   SELECT
+       source,
+       record_type,
+       quality_level,
+       count() as occurrences,
+       round(avg(quality_score), 3) as avg_quality_score
+   FROM data_quality
+   GROUP BY source, record_type, quality_level
+   ORDER BY source, record_type, quality_level;
+   ```
+
+2. Find specific quality issues:
+   ```sql
+   SELECT
+       detected_at,
+       source,
+       record_type,
+       record_id,
+       issues,
+       warnings
+   FROM data_quality
+   WHERE issue_count > 0
+   ORDER BY detected_at DESC
+   LIMIT 20;
+   ```
+
+3. Analyze quality trends over time:
+   ```sql
+   SELECT
+       toStartOfMinute(detected_at) as minute,
+       source,
+       count() as quality_events,
+       sum(issue_count) as total_issues,
+       sum(warning_count) as total_warnings,
+       round(avg(quality_score), 3) as avg_score
+   FROM data_quality
+   GROUP BY minute, source
+   ORDER BY minute DESC, source
+   LIMIT 30;
+   ```
+
+4. Check for Solana skipped slots (consistency check):
+   ```sql
+   SELECT
+       slot,
+       parent_slot,
+       slot - parent_slot - 1 as skipped_slots,
+       timestamp
+   FROM solana_blocks
+   WHERE slot - parent_slot > 5
+   ORDER BY skipped_slots DESC
+   LIMIT 10;
+   ```
+
+5. Verify Bitcoin timestamp consistency:
+   ```sql
+   SELECT
+       block_height,
+       timestamp,
+       dateDiff('minute', timestamp, now()) as minutes_ago,
+       CASE
+           WHEN timestamp > now() THEN 'FUTURE - INVALID'
+           WHEN dateDiff('hour', timestamp, now()) > 24 THEN 'VERY OLD'
+           ELSE 'OK'
+       END as timestamp_status
+   FROM bitcoin_blocks
+   ORDER BY block_height DESC
+   LIMIT 10;
+   ```
+
+**Questions to Consider:**
+- What types of quality issues are most common?
+- How would you alert on quality degradation?
+- Why is veracity especially important for financial data like blockchain?
+
+---
+
+### Exercise 14: Extracting Value
+
+**Learning Objectives:**
+- Transform raw data into business insights
+- Answer analytical questions
+- Create actionable metrics
+
+**Instructions:**
+
+1. **Fee Analysis** - Which chain is cheaper?
+   ```sql
+   SELECT
+       'Bitcoin' as chain,
+       'Satoshi' as unit,
+       round(avg(fee), 2) as avg_fee,
+       round(avg(fee) * 0.00000001 * 45000, 4) as approx_usd  -- Assuming $45k BTC
+   FROM bitcoin_transactions
+   UNION ALL
+   SELECT
+       'Solana',
+       'Lamport',
+       round(avg(fee), 2),
+       round(avg(fee) * 0.000000001 * 100, 6)  -- Assuming $100 SOL
+   FROM solana_transactions;
+   ```
+
+2. **Network Health** - Transaction success rates:
+   ```sql
+   SELECT
+       toStartOfHour(timestamp) as hour,
+       countIf(status = 'success') as successful,
+       countIf(status = 'failed') as failed,
+       round(countIf(status = 'success') * 100.0 / count(), 2) as success_rate_pct
+   FROM solana_transactions
+   GROUP BY hour
+   ORDER BY hour DESC
+   LIMIT 24;
+   ```
+
+3. **Throughput Comparison**:
+   ```sql
+   SELECT
+       chain,
+       sum(tx_count) as total_transactions,
+       count() as total_blocks,
+       round(sum(tx_count) * 1.0 / count(), 2) as avg_tx_per_block,
+       round(sum(tx_count) / dateDiff('second', min(ts), max(ts)), 2) as tx_per_second
+   FROM (
+       SELECT 'Bitcoin' as chain, transaction_count as tx_count, timestamp as ts
+       FROM bitcoin_blocks
+       UNION ALL
+       SELECT 'Solana', transaction_count, timestamp
+       FROM solana_blocks
+   )
+   GROUP BY chain;
+   ```
+
+4. **Data Pipeline ROI** - Storage efficiency value:
+   ```sql
+   SELECT
+       table,
+       sum(rows) as rows,
+       formatReadableSize(sum(bytes)) as would_need_uncompressed,
+       formatReadableSize(sum(bytes_on_disk)) as actually_using,
+       formatReadableSize(sum(bytes) - sum(bytes_on_disk)) as storage_saved,
+       round((sum(bytes) - sum(bytes_on_disk)) / 1024 / 1024 * 0.023, 4) as dollars_saved_per_month
+       -- AWS S3 ~$0.023/GB/month
+   FROM system.parts
+   WHERE database = 'blockchain_data' AND active = 1
+   GROUP BY table;
+   ```
+
+**Questions to Consider:**
+- What business decisions could these insights drive?
+- How would you visualize these metrics for stakeholders?
+- What additional value could you extract with more data?
 
 ---
 
