@@ -2,6 +2,29 @@
 Solana Blockchain Data Collector
 Collects blocks and transactions from Solana via RPC
 
+=== 5Vs OF BIG DATA IN THIS MODULE ===
+
+This collector demonstrates multiple Vs of big data:
+
+VOLUME:   Solana generates ~100GB+ of data per month due to its high throughput.
+          Each slot can contain thousands of transactions. We sample 50 transactions
+          per block for educational purposes.
+
+VELOCITY: Solana produces ~2.5 blocks/second (~400ms per slot) - one of the fastest
+          blockchains. This HIGH VELOCITY creates significant data engineering
+          challenges for real-time collection and processing.
+
+VARIETY:  Solana uses an account-based model with Proof-of-History timestamps,
+          slots vs block heights, and Ed25519 signatures. This is different from
+          both Bitcoin (UTXO) and Ethereum (account with EVM).
+
+VERACITY: We validate slot/block_height consistency, check for skipped slots,
+          verify transaction statuses, and detect timestamp anomalies.
+          See DataValidator integration below.
+
+VALUE:    The collected data enables analysis of network health (skipped slots),
+          transaction success rates, fee trends, and throughput patterns.
+
 === EDUCATIONAL OVERVIEW ===
 
 Solana is a high-throughput blockchain using Proof-of-Stake combined with
@@ -36,6 +59,8 @@ from datetime import datetime
 import aiohttp
 import json
 
+from .data_validator import DataValidator, log_quality_issue
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,6 +91,10 @@ class SolanaCollector:
         self.enabled = enabled
         # Track last processed slot (not block height) for sequential collection
         self.last_slot = None
+
+        # [VERACITY] Initialize data validator for quality checks
+        # Solana's high velocity makes quality checks especially important
+        self.validator = DataValidator()
 
     async def rpc_call(self, session, method: str, params: list):
         """
@@ -202,6 +231,36 @@ class SolanaCollector:
                             'transaction_count': len(block.get('transactions', []))
                         }
 
+                        # ================================================================
+                        # [VERACITY] Validate block data before insertion
+                        # ================================================================
+                        # For Solana, we specifically check:
+                        # - Slot/block_height consistency (block_height <= slot)
+                        # - Parent slot is less than current slot
+                        # - Skipped slots detection (network health indicator)
+                        # - Timestamp is reasonable
+                        block_validation = self.validator.validate_solana_block(block_data)
+
+                        if not block_validation.is_valid:
+                            logger.warning(
+                                f"[VERACITY] Solana slot {slot} has quality issues: "
+                                f"{block_validation.issues}"
+                            )
+                            log_quality_issue(
+                                source='solana',
+                                record_type='block',
+                                record_id=str(slot),
+                                result=block_validation,
+                                client=client
+                            )
+
+                        if block_validation.warnings:
+                            # Skipped slots are common on Solana, log at debug level
+                            logger.debug(
+                                f"[VERACITY] Solana slot {slot} warnings: "
+                                f"{block_validation.warnings}"
+                            )
+
                         # Convert dict to list for clickhouse_connect (required when table has DEFAULT columns)
                         columns = ['slot', 'block_height', 'block_hash', 'timestamp',
                                  'parent_slot', 'previous_block_hash', 'transaction_count']
@@ -261,6 +320,16 @@ class SolanaCollector:
                                     'status': 'success' if meta.get('err') is None else 'failed',
                                     'timestamp': datetime.fromtimestamp(block.get('blockTime', 0)) if block.get('blockTime') else datetime.now()
                                 }
+
+                                # [VERACITY] Validate transaction before adding to batch
+                                # Track failed transactions - they're charged fees but don't execute
+                                tx_validation = self.validator.validate_solana_transaction(tx_record)
+                                if not tx_validation.is_valid:
+                                    logger.debug(
+                                        f"[VERACITY] Solana tx {signature[:16]}... has issues: "
+                                        f"{tx_validation.issues}"
+                                    )
+
                                 tx_data.append(tx_record)
                             except Exception as e:
                                 # Log but continue - individual transaction errors shouldn't stop collection

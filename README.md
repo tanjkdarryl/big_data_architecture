@@ -735,6 +735,28 @@ This project is designed for teaching the following concepts:
 6. **Data Visualization**: Real-time dashboards with Streamlit
 7. **SQL Analytics**: Complex queries for time-series and aggregate analysis
 
+### The 5Vs of Big Data
+
+This project demonstrates the **5Vs of Big Data** - the defining characteristics that make data "big":
+
+| V | Definition | How This Project Demonstrates It |
+|---|------------|----------------------------------|
+| **Volume** | The sheer scale of data | Bitcoin's blockchain is ~500GB+. ClickHouse's columnar storage with 80-95% compression handles this efficiently. See partitioning by month. |
+| **Velocity** | Speed of data generation and processing | Solana produces ~2.5 blocks/second vs Bitcoin's 1 block/10 min. Our async collectors handle both velocities concurrently. |
+| **Variety** | Different data types and structures | Bitcoin (UTXO, REST API) vs Solana (accounts, JSON-RPC) vs Ethereum (EVM, JSON-RPC). Each uses different data models unified into our schema. |
+| **Veracity** | Data quality and trustworthiness | The `DataValidator` class validates blocks and transactions, checking completeness, accuracy, and consistency. Issues are logged to the `data_quality` table. |
+| **Value** | Extracting meaningful insights | Dashboard analytics, SQL queries, and cross-chain comparisons turn raw blockchain data into insights about fees, throughput, and network health. |
+
+#### Finding the 5Vs in the Code
+
+Look for `[VOLUME]`, `[VELOCITY]`, `[VARIETY]`, `[VERACITY]`, and `[VALUE]` comments throughout the codebase:
+
+- **main.py**: 5Vs framework overview and annotations in the collection loop
+- **bitcoin_collector.py**: Module header explains how Bitcoin data exhibits each V
+- **solana_collector.py**: Module header explains Solana's high-velocity characteristics
+- **data_validator.py**: Complete implementation of VERACITY with quality checks
+- **01-init-schema.sql**: The `data_quality` table tracks VERACITY metrics
+
 ## Limitations and Considerations
 
 - **Public RPC Limits**: Free public endpoints have rate limits and may be unreliable
