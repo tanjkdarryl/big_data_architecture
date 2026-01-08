@@ -46,12 +46,23 @@ print_section() {
     echo -e "${GREEN}========================================${NC}"
 }
 
-# Check if running in the correct directory
-if [ ! -f "docker-compose.yml" ]; then
-    print_error "docker-compose.yml not found in current directory"
-    print_error "Please run this script from the project root directory"
+# Detect project root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/docker-compose.yml" ]; then
+    # Script is in root directory
+    PROJECT_ROOT="$SCRIPT_DIR"
+elif [ -f "$SCRIPT_DIR/../docker-compose.yml" ]; then
+    # Script is in scripts/ subdirectory
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+else
+    print_error "Could not find docker-compose.yml"
+    print_error "Please ensure you're running this from the project directory or scripts/ subdirectory"
     exit 1
 fi
+
+# Change to project root
+cd "$PROJECT_ROOT"
+print_info "Working directory: $PROJECT_ROOT"
 
 # Confirmation prompt
 print_section "CLEANUP CONFIRMATION"
