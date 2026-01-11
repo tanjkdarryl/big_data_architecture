@@ -125,6 +125,34 @@ GROUP BY table;
 | ClickHouse HTTP | http://localhost:8123 | Database HTTP interface |
 | ClickHouse Client | Port 9000 | Native protocol (TCP) |
 
+## API Response Examples
+
+### Status Endpoint
+
+```bash
+curl http://localhost:8000/api/status
+```
+
+**Response:**
+```json
+{
+  "is_running": true,
+  "started_at": "2026-01-10T14:30:00Z",
+  "stopped_at": null,
+  "total_records": 15432,
+  "total_size_bytes": 2147483648,
+  "records_per_second": 12.45
+}
+```
+
+**Field Descriptions:**
+- `is_running`: Whether collection is currently active
+- `started_at`: ISO8601 timestamp when collection started
+- `stopped_at`: ISO8601 timestamp when collection stopped (null if running)
+- `total_records`: Total count across all blockchain tables
+- `total_size_bytes`: Compressed storage size in ClickHouse
+- `records_per_second`: Average ingestion rate since collection started
+
 ## Ports Reference
 
 ```

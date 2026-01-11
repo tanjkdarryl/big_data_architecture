@@ -4,7 +4,8 @@ import { formatNumber, formatDataSize } from '@/app/lib/utils'
 
 interface MetricsGridProps {
   totalRecords: number
-  dataSize: number
+  dataSizeBytes: number
+  recordsPerSecond: number
   bitcoinBlocks: number
   bitcoinTransactions: number
   solanaBlocks: number
@@ -13,12 +14,17 @@ interface MetricsGridProps {
 
 export default function MetricsGrid({
   totalRecords,
-  dataSize,
+  dataSizeBytes,
+  recordsPerSecond,
   bitcoinBlocks,
   bitcoinTransactions,
   solanaBlocks,
   solanaTransactions,
 }: MetricsGridProps) {
+  const formatRate = (rate: number) => {
+    return `${rate.toFixed(2)} records/sec`
+  }
+
   const metrics = [
     {
       label: 'Total Records',
@@ -27,8 +33,13 @@ export default function MetricsGrid({
     },
     {
       label: 'Data Size',
-      value: formatDataSize(dataSize),
+      value: formatDataSize(dataSizeBytes),
       color: 'text-primary',
+    },
+    {
+      label: 'Ingestion Rate',
+      value: formatRate(recordsPerSecond),
+      color: 'text-indigo-600',
     },
     {
       label: 'Bitcoin Blocks',
@@ -53,7 +64,7 @@ export default function MetricsGrid({
   ]
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {metrics.map((metric) => (
         <div
           key={metric.label}

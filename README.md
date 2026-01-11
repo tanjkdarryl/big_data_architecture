@@ -153,7 +153,7 @@ After completing this project, students will understand:
 
 - **Multi-Blockchain Support**: Simultaneously collects data from Bitcoin and Solana using free public RPC endpoints
 - **High-Performance Ingestion**: Leverages FastAPI for asynchronous data collection and ClickHouse for fast, columnar data storage
-- **Real-Time Dashboard**: Next.js dashboard provides live metrics including record counts, events per second, and storage statistics
+- **Real-Time Dashboard**: Next.js dashboard with 7 metric cards showing Total Records, Data Size, **Ingestion Rate (records/sec)**, Bitcoin Blocks, Bitcoin Transactions, Solana Blocks, and Solana Transactions
 - **Resilient Collection**: Automatic retry with exponential backoff for API failures, rate limits, and connection errors
 - **Data Compression**: ZSTD compression with column-level codecs achieves 30-70% storage reduction for blockchain data
 - **Health Monitoring**: Enhanced health check endpoint with per-blockchain metrics and error tracking
@@ -167,6 +167,7 @@ After completing this project, students will understand:
 ### v1.2.0 (January 2026)
 - Added real-time dashboard with Next.js 16 and Turbopack
 - Implemented data preview tables with client-side pagination (10 rows/page)
+- **Added Ingestion Rate metric showing records per second on dashboard**
 - Fixed timestamp validation for auto-stop timer (UTC timezone handling)
 - Added cache-control headers to prevent browser caching issues
 - Improved error handling and state synchronization between components
@@ -363,6 +364,17 @@ docker compose up --build -d
 **4. Access the dashboard**
 
 Open your browser and navigate to: **http://localhost:3001**
+
+The dashboard displays 7 real-time metric cards:
+1. **Total Records**: Aggregate count across all blockchains
+2. **Data Size**: Storage used in ClickHouse (compressed)
+3. **Ingestion Rate**: Records per second (average since collection started)
+4. **Bitcoin Blocks**: Block count from Bitcoin blockchain
+5. **Bitcoin Transactions**: Transaction count from Bitcoin
+6. **Solana Blocks**: Block count from Solana blockchain
+7. **Solana Transactions**: Transaction count from Solana
+
+The **Ingestion Rate** metric provides real-time performance insights, showing the throughput of the data collection pipeline.
 
 **5. Start collecting data**
 

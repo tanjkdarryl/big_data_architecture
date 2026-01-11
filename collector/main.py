@@ -59,7 +59,7 @@ The service exposes a REST API for control (start/stop) and monitoring (status).
 
 import asyncio
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import logging
 
@@ -98,6 +98,40 @@ app = FastAPI(title="Blockchain Data Collector")
 # - Proper shutdown handling with signals
 collection_task: Optional[asyncio.Task] = None
 is_collecting = False
+
+
+def validate_timestamp(timestamp: Optional[datetime], max_age_hours: int = 24) -> bool:
+    """
+    Validate that a timestamp is reasonable (not in future, not too old).
+
+    Args:
+        timestamp: Datetime to validate
+        max_age_hours: Maximum age in hours (default 24)
+
+    Returns:
+        True if valid, False otherwise
+    """
+    if timestamp is None:
+        return False
+
+    now = datetime.now(timezone.utc)
+
+    # Ensure timestamp has timezone info
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+
+    # Check if timestamp is in the future
+    if timestamp > now:
+        logger.warning(f"Timestamp in future: {timestamp}")
+        return False
+
+    # Check if timestamp is too old
+    age = now - timestamp
+    if age > timedelta(hours=max_age_hours):
+        logger.warning(f"Timestamp too old: {timestamp}, age: {age}")
+        return False
+
+    return True
 
 
 def get_clickhouse_client():
@@ -190,7 +224,7 @@ async def check_safety_limits(client) -> tuple[bool, str]:
         # Check time limit
         max_time = int(os.getenv('MAX_COLLECTION_TIME_MINUTES', 10))
         if started_at:
-            elapsed = datetime.now() - started_at
+            elapsed = datetime.now(timezone.utc) - started_at
             if elapsed > timedelta(minutes=max_time):
                 return False, f"Time limit exceeded ({max_time} minutes)"
 
@@ -259,7 +293,7 @@ async def collect_data():
     """)
 
     # Capture started_at timestamp to preserve in subsequent updates
-    started_at = datetime.utcnow()
+    started_at = datetime.now(timezone.utc)
 
     try:
         while is_collecting:
@@ -455,10 +489,10 @@ async def stop_collection():
 @app.get("/status")
 async def get_status():
     """
-    Get current collection status.
+    Get current collection status with ingestion rate metrics.
 
     Returns information about whether collection is running, when it started/stopped,
-    and totals for records and data size.
+    totals for records and data size, and the average ingestion rate in records per second.
     """
     client = get_clickhouse_client()
 
@@ -471,20 +505,74 @@ async def get_status():
             LIMIT 1
         """)
 
-        if result.result_rows:
-            row = result.result_rows[0]
+        if not result.result_rows:
             return {
-                "is_running": bool(row[0]),
-                "started_at": str(row[1]).replace(' ', 'T') + 'Z' if row[1] else None,
-                "stopped_at": str(row[2]).replace(' ', 'T') + 'Z' if row[2] else None,
-                "total_records": row[3],
-                "total_size_bytes": row[4]
+                "is_running": False,
+                "started_at": None,
+                "stopped_at": None,
+                "total_records": 0,
+                "total_size_bytes": 0,
+                "records_per_second": 0.0
             }
 
-        return {"is_running": False}
+        row = result.result_rows[0]
+        is_running = bool(row[0])
+        started_at = row[1]
+        stopped_at = row[2]
+        total_records = row[3]
+        total_size_bytes = row[4]
+
+        # Calculate records per second
+        records_per_second = 0.0
+        if started_at and total_records > 0:
+            try:
+                # Parse timestamp
+                start_time = datetime.fromisoformat(str(started_at).replace(' ', 'T'))
+
+                # Ensure timezone awareness
+                if start_time.tzinfo is None:
+                    start_time = start_time.replace(tzinfo=timezone.utc)
+
+                # Validate timestamp
+                if not validate_timestamp(start_time):
+                    logger.warning(f"Invalid start timestamp: {start_time}")
+                else:
+                    # Calculate elapsed time
+                    if is_running:
+                        elapsed_seconds = (datetime.now(timezone.utc) - start_time).total_seconds()
+                    elif stopped_at:
+                        stop_time = datetime.fromisoformat(str(stopped_at).replace(' ', 'T'))
+                        if stop_time.tzinfo is None:
+                            stop_time = stop_time.replace(tzinfo=timezone.utc)
+                        elapsed_seconds = (stop_time - start_time).total_seconds()
+                    else:
+                        elapsed_seconds = 0
+
+                    # Calculate rate (avoid division by zero)
+                    if elapsed_seconds > 0:
+                        records_per_second = round(total_records / elapsed_seconds, 2)
+            except Exception as e:
+                logger.error(f"Error calculating records_per_second: {e}", exc_info=True)
+                records_per_second = 0.0
+
+        return {
+            "is_running": is_running,
+            "started_at": str(started_at).replace(' ', 'T') + 'Z' if started_at else None,
+            "stopped_at": str(stopped_at).replace(' ', 'T') + 'Z' if stopped_at else None,
+            "total_records": total_records,
+            "total_size_bytes": total_size_bytes,
+            "records_per_second": records_per_second
+        }
     except Exception as e:
-        logger.error(f"Error getting status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting status: {e}", exc_info=True)
+        return {
+            "is_running": False,
+            "started_at": None,
+            "stopped_at": None,
+            "total_records": 0,
+            "total_size_bytes": 0,
+            "records_per_second": 0.0
+        }
 
 
 @app.get("/health")
@@ -534,7 +622,7 @@ async def health_check():
             source, last_collect, total_records, total_errors, avg_duration = row
 
             # Calculate time since last collection
-            time_since_collect = (datetime.now() - last_collect).total_seconds() if last_collect else None
+            time_since_collect = (datetime.now(timezone.utc) - last_collect).total_seconds() if last_collect else None
 
             # Determine health: healthy if collected in last 60 seconds and no errors
             is_healthy = time_since_collect is not None and time_since_collect < 60 and total_errors == 0
@@ -565,7 +653,7 @@ async def health_check():
 
         return {
             "status": "healthy" if overall_healthy else "degraded",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "database": {
                 "clickhouse": "connected",
                 "query_latency_ms": "< 10"
@@ -581,6 +669,6 @@ async def health_check():
         logger.error(f"Health check failed: {e}")
         return {
             "status": "unhealthy",
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "error": str(e)
         }

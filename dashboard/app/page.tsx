@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { useCollectorStatus } from './hooks/useCollectorStatus'
 import { useBlockchainData } from './hooks/useBlockchainData'
 import {
@@ -27,6 +27,9 @@ export default function DashboardPage() {
   const solanaBlocks = useSolanaBlocksPreview()
   const solanaTransactions = useSolanaTransactionsPreview()
 
+  // State for auto-stop notification
+  const [autoStopMessage, setAutoStopMessage] = useState<string | null>(null)
+
   // Get max collection time from environment (fallback to 10 minutes)
   const maxMinutes = parseInt(process.env.NEXT_PUBLIC_MAX_COLLECTION_TIME_MINUTES || '10')
   const maxSizeGB = parseInt(process.env.NEXT_PUBLIC_MAX_DATA_SIZE_GB || '5')
@@ -51,15 +54,21 @@ export default function DashboardPage() {
       const error = await res.json()
       // Refresh status even on error to sync UI with actual state
       await refreshStatus()
-      // Only show alert if it's not a "collection not running" error
-      if (res.status !== 400 || !error.error?.includes('not running')) {
+
+      // Don't show error alert if:
+      // 1. Collection not running (400 error)
+      // 2. Auto-stop message is set (indicates auto-stop triggered this)
+      const isAutoStop = autoStopMessage !== null
+      const isNotRunning = res.status === 400 || error.error?.includes('not running')
+
+      if (!isAutoStop && !isNotRunning) {
         alert(error.error || 'Failed to stop collection')
       }
     }
-  }, [refreshStatus])
+  }, [refreshStatus, autoStopMessage])
 
-  // Convert total_size_bytes to GB
-  const dataSizeGB = status?.total_size_bytes ? status.total_size_bytes / (1024 * 1024 * 1024) : 0
+  // Get total_size_bytes directly
+  const dataSizeBytes = status?.total_size_bytes || 0
 
   // Auto-stop when timer expires
   useEffect(() => {
@@ -82,6 +91,8 @@ export default function DashboardPage() {
 
       if (elapsedMinutes >= maxMinutes) {
         // Timer expired, stop collection automatically
+        // Set message before stopping to indicate auto-stop
+        setAutoStopMessage('Collection stopped automatically (time limit reached)')
         handleStop()
       }
     }
@@ -144,12 +155,34 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Auto-Stop Notification Banner */}
+      {autoStopMessage && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center">
+            <div className="text-green-600 mr-3 text-2xl">✓</div>
+            <div className="flex-1">
+              <p className="text-green-800 font-medium">{autoStopMessage}</p>
+              <p className="text-green-600 text-sm mt-1">
+                You can start a new collection session anytime.
+              </p>
+            </div>
+            <button
+              onClick={() => setAutoStopMessage(null)}
+              className="ml-4 text-green-600 hover:text-green-800 text-2xl font-bold"
+              aria-label="Dismiss notification"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Metrics Grid */}
       <div className="mb-6">
         <MetricsGrid
           totalRecords={data?.total_records || 0}
-          dataSize={dataSizeGB}
+          dataSizeBytes={dataSizeBytes}
+          recordsPerSecond={status?.records_per_second || 0}
           bitcoinBlocks={data?.bitcoin_blocks || 0}
           bitcoinTransactions={data?.bitcoin_transactions || 0}
           solanaBlocks={data?.solana_blocks || 0}

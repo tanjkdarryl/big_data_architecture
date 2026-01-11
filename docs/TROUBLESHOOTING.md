@@ -368,7 +368,75 @@ docker compose up -d
    docker compose up -d
    ```
 
-### 6. Performance Issues
+### 6. Metrics Issues
+
+#### Problem: Ingestion Rate shows 0.00 /sec
+
+**Symptoms:**
+- "Ingestion Rate" card displays "0.00 /sec"
+- Collection is running
+- Total Records is increasing
+
+**Causes:**
+1. **Collection just started** (elapsed time < 1 second)
+2. **No records collected yet** (waiting for first blockchain response)
+3. **Timestamp synchronization issue** (system clock skew)
+
+**Solution:**
+1. **Wait 2-3 seconds:**
+   - Metric updates every 5 seconds
+   - Initial calculation may show 0 briefly
+
+2. **Verify collection is actually running:**
+   ```bash
+   curl http://localhost:8000/api/status
+   # Check "is_running": true
+   ```
+
+3. **Check collector logs:**
+   ```bash
+   docker compose logs collector --tail=20
+   # Look for "Collected Bitcoin block" or "Collected Solana block" messages
+   ```
+
+4. **Verify database connection:**
+   ```bash
+   docker compose exec clickhouse clickhouse-client --password clickhouse_password --query "SELECT count() FROM collection_state"
+   # Should return: 1
+   ```
+
+#### Problem: Ingestion Rate seems too high or too low
+
+**Symptoms:**
+- Ingestion Rate shows 100+ /sec (unexpectedly high)
+- Or shows 0.001 /sec (unexpectedly low)
+
+**Diagnostic Steps:**
+1. **Manual calculation:**
+   ```sql
+   SELECT
+       total_records,
+       dateDiff('second', started_at, now()) as elapsed,
+       round(total_records / dateDiff('second', started_at, now()), 2) as manual_rate
+   FROM collection_state
+   WHERE id = 1;
+   ```
+
+2. **Compare with API:**
+   ```bash
+   curl http://localhost:8000/api/status | grep records_per_second
+   ```
+
+3. **Check for timestamp issues:**
+   - Ensure Docker container time matches host time
+   - Check for clock skew: `docker compose exec collector date`
+
+**Expected Rates:**
+- Bitcoin only: 0.1-0.2 records/sec (blocks mined every ~10 min)
+- Solana only: 2-5 records/sec (blocks produced every ~400ms)
+- Both combined: 2-5 records/sec aggregate
+
+### 7. Performance Issues
 
 #### Problem: Queries are slow
 
@@ -426,7 +494,7 @@ docker compose up -d
    docker compose restart
    ```
 
-### 7. Environment Issues
+### 8. Environment Issues
 
 #### Problem: .env file not found
 
@@ -460,7 +528,7 @@ docker compose up -d
 docker compose exec collector env | grep BITCOIN
 ```
 
-### 8. Network Issues
+### 9. Network Issues
 
 #### Problem: Can't access dashboard
 

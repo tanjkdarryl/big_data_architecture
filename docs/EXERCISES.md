@@ -144,15 +144,30 @@ Before starting these exercises, ensure you have:
    - What does "Safety Limits: 10min / 5GB" mean?
    - Why might we need safety limits in an educational environment?
 
-3. Watch the **Records by Blockchain Source** chart:
+3. Review the **7 Metric Cards:**
+   - Total Records - aggregate count
+   - Data Size - compressed storage
+   - Ingestion Rate - records per second being collected
+   - Bitcoin Blocks
+   - Bitcoin Transactions
+   - Solana Blocks
+   - Solana Transactions
+
+4. Watch the **Ingestion Rate:**
+   - When collection is running, this shows live throughput
+   - Updates every 5 seconds
+   - Calculate expected rate: total_records / elapsed_seconds
+   - Compare manual calculation with dashboard display
+
+5. Watch the **Records by Blockchain Source** chart:
    - Which blockchain shows the most transactions?
    - Is the ratio between blocks and transactions different for each chain?
 
-4. Examine the **Collection Performance** section:
+6. Examine the **Collection Performance** section:
    - Which blockchain has the fastest collection duration?
    - Which has the slowest? Why might that be?
 
-5. Check the **Storage Details** section:
+7. Check the **Storage Details** section:
    - What is the compression ratio showing?
    - Why is blockchain data highly compressible?
 
@@ -464,6 +479,12 @@ Try modifying these queries to:
 - How does the collection interval (5 seconds default) affect throughput?
 - What might be the bottleneck: API rate limits or database insertion?
 
+**Extension:**
+Compare your manual SQL calculation with the dashboard's built-in "Ingestion Rate" metric:
+- Open http://localhost:3001
+- Observe the "Ingestion Rate" card
+- It should match your SQL calculation: `records_collected / elapsed_seconds`
+
 ---
 
 ## The 5Vs of Big Data
@@ -589,6 +610,9 @@ These exercises help you understand the 5Vs framework through hands-on explorati
    WHERE metric_time > now() - INTERVAL 10 MINUTE
    GROUP BY source;
    ```
+
+**Dashboard Integration:**
+The "Ingestion Rate" metric card on the dashboard provides this calculation in real-time without needing to run SQL queries. It's calculated by the collector API and displayed automatically.
 
 **Questions to Consider:**
 - Which blockchain generates data faster?

@@ -231,7 +231,7 @@ ORDER BY check_time;
 |----------|--------|---------|
 | `/start` | POST | Start data collection threads |
 | `/stop` | POST | Stop collection and cleanup |
-| `/status` | GET | Get collection state (is_running, start_time, counts) |
+| `/status` | GET | Get collection state (is_running, start_time, counts, records_per_second) |
 
 **Dashboard API (`/api/...`):**
 
@@ -239,6 +239,32 @@ ORDER BY check_time;
 |----------|--------|---------|
 | `/data` | GET | Get aggregated metrics |
 | `/preview/{blockchain}-{entity}` | GET | Get paginated preview (550 records) |
+
+### Status Endpoint Response Structure
+
+The `/status` endpoint returns comprehensive collection metrics:
+
+```json
+{
+  "is_running": boolean,
+  "started_at": "ISO8601 timestamp",
+  "stopped_at": "ISO8601 timestamp",
+  "total_records": number,
+  "total_size_bytes": number,
+  "records_per_second": number
+}
+```
+
+**Ingestion Rate Calculation:**
+- **Formula:** `total_records / elapsed_seconds`
+- **Elapsed Time:**
+  - If running: `now() - started_at`
+  - If stopped: `stopped_at - started_at`
+- **Edge Cases:** Returns `0.0` if:
+  - Collection not started
+  - Elapsed time < 1 second
+  - Total records = 0
+- **Precision:** Rounded to 2 decimal places
 
 ### State Management
 
@@ -407,12 +433,27 @@ GROUP BY hour;
 - Collection start/stop times
 - Data size on disk
 - Records per table
+- Ingestion Rate (records per second)
 
 **Missing:**
 - Query latency percentiles
 - Error rates and types
 - RPC endpoint health
 - Database connection pool stats
+
+### Performance Metrics
+
+**Ingestion Rate (records/sec):**
+- Calculated as: `total_records / (current_time - started_at)`
+- Provides real-time throughput visibility
+- Helps identify:
+  - RPC endpoint performance issues
+  - Network bottlenecks
+  - Collection efficiency
+- Expected ranges:
+  - Bitcoin: ~0.1-0.2 /sec (blocks every ~10 minutes)
+  - Solana: ~2-5 /sec (blocks every ~400ms)
+  - Combined: ~2-5 /sec aggregate
 
 ### Recommended Additions
 

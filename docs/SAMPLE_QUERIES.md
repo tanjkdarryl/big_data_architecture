@@ -159,6 +159,44 @@ GROUP BY source
 ORDER BY total_records DESC;
 ```
 
+### Verify API's Ingestion Rate Calculation
+
+Compare the API's `records_per_second` value with database calculations:
+
+```sql
+-- Calculate ingestion rate from collection_state table
+SELECT
+    total_records,
+    started_at,
+    CASE
+        WHEN is_running = 1 THEN now()
+        ELSE stopped_at
+    END as end_time,
+    dateDiff('second', started_at,
+        CASE WHEN is_running = 1 THEN now() ELSE stopped_at END
+    ) as elapsed_seconds,
+    round(total_records * 1.0 / dateDiff('second', started_at,
+        CASE WHEN is_running = 1 THEN now() ELSE stopped_at END
+    ), 2) as calculated_records_per_second
+FROM collection_state
+WHERE id = 1;
+```
+
+**Verification:**
+1. Run this query in ClickHouse
+2. Check API response: `curl http://localhost:8000/api/status`
+3. Compare `calculated_records_per_second` (SQL) with `records_per_second` (API)
+4. They should match (within rounding differences)
+
+**Example Output:**
+```
+total_records: 15432
+elapsed_seconds: 1234
+calculated_records_per_second: 12.51
+```
+
+API response should show: `"records_per_second": 12.51`
+
 ---
 
 ## Advanced Analytics
