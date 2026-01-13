@@ -14,12 +14,21 @@ big_data_architecture/
 ├── docker-compose.yml                  # Service orchestration (ClickHouse, Collector, Dashboard)
 ├── .env.example                        # Environment configuration template
 ├── scripts/                            # Utility scripts
-│   ├── start.sh                        # Quick start script (runs docker compose)
-│   └── cleanup.sh                      # Complete teardown and data removal
+│   ├── start.sh                        # Quick start script for macOS/Linux
+│   ├── cleanup.sh                      # Complete teardown for macOS/Linux
+│   ├── start.ps1                       # Quick start script for Windows (PowerShell)
+│   ├── start.bat                       # Quick start script for Windows (Command Prompt)
+│   ├── cleanup.ps1                     # Complete teardown for Windows (PowerShell)
+│   └── cleanup.bat                     # Complete teardown for Windows (Command Prompt)
 ├── docs/                               # Learning materials and references
 │   ├── EXERCISES.md                    # Hands-on exercises (queries, analysis, challenges)
 │   ├── GLOSSARY.md                     # Blockchain and data engineering terminology
-│   └── SAMPLE_QUERIES.md               # ClickHouse SQL query examples
+│   ├── SAMPLE_QUERIES.md               # ClickHouse SQL query examples
+│   ├── WINDOWS_SETUP.md                # Complete Windows setup guide
+│   ├── TROUBLESHOOTING.md              # Common issues and solutions
+│   ├── ARCHITECTURE.md                 # System architecture details
+│   ├── QUICK_START.md                  # One-page command reference
+│   └── DOCKER_VERSIONS.md              # Docker image version policy
 ├── collector/                          # Python FastAPI data collection service
 │   ├── main.py                         # FastAPI orchestration (start/stop/status API)
 │   ├── collectors/
@@ -46,15 +55,20 @@ big_data_architecture/
 
 **Getting Started:**
 - Setup instructions: See "Getting Started" section below
+- **Windows users**: See `docs/WINDOWS_SETUP.md` for complete Windows setup guide
 - Configuration: See `.env.example` and "Configuration" section
-- Start system: `./scripts/start.sh` or `docker compose up`
+- Start system (macOS/Linux): `./scripts/start.sh` or `docker compose up`
+- Start system (Windows): `scripts\start.bat` or `scripts\start.ps1`
 - Stop system: Press Stop button in dashboard or `docker compose down`
-- Complete cleanup: `./scripts/cleanup.sh`
+- Complete cleanup (macOS/Linux): `./scripts/cleanup.sh`
+- Complete cleanup (Windows): `scripts\cleanup.bat` or `scripts\cleanup.ps1`
 
 **Learning Resources:**
 - Hands-on exercises: `docs/EXERCISES.md` (9 progressive exercises)
 - Terminology reference: `docs/GLOSSARY.md` (blockchain and data concepts)
 - Query examples: `docs/SAMPLE_QUERIES.md` (ClickHouse SQL patterns)
+- Windows setup: `docs/WINDOWS_SETUP.md` (complete Windows guide)
+- Troubleshooting: `docs/TROUBLESHOOTING.md` (common issues and solutions)
 
 **Development:**
 - Collector code: `collector/` directory (Python/FastAPI)
@@ -315,12 +329,22 @@ See "Configuration Reference" section at the end for all available options.
 
 **3. Start the system**
 
+**macOS/Linux:**
 ```bash
 ./scripts/start.sh
 ```
 
-Or manually with Docker Compose:
+**Windows (Command Prompt):**
+```cmd
+scripts\start.bat
+```
 
+**Windows (PowerShell):**
+```powershell
+.\scripts\start.ps1
+```
+
+Or manually with Docker Compose (all platforms):
 ```bash
 docker compose up --build -d
 ```
@@ -394,8 +418,19 @@ docker compose down
 
 **Complete cleanup (remove all data and start fresh):**
 
+**macOS/Linux:**
 ```bash
 ./scripts/cleanup.sh
+```
+
+**Windows (Command Prompt):**
+```cmd
+scripts\cleanup.bat
+```
+
+**Windows (PowerShell):**
+```powershell
+.\scripts\cleanup.ps1
 ```
 
 The cleanup script provides an interactive, safe way to remove all deployed resources:

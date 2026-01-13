@@ -700,9 +700,281 @@ docker compose up -d
 
 **Tip:** Logs contain helpful error messages. Read them!
 
+## Windows-Specific Issues
+
+For comprehensive Windows setup, see [WINDOWS_SETUP.md](WINDOWS_SETUP.md).
+
+### Docker Desktop Issues
+
+#### Problem: Docker Desktop won't start on Windows
+
+**Symptoms:**
+- Docker Desktop stuck on "Starting..."
+- WSL2 errors in Windows Event Log
+
+**Solutions:**
+
+1. **Update WSL2:**
+   ```powershell
+   wsl --update
+   wsl --shutdown
+   ```
+
+2. **Check virtualization:**
+   - Open Task Manager (Ctrl+Shift+Esc)
+   - Go to Performance tab
+   - Look for "Virtualization: Enabled"
+   - If disabled, enable it in BIOS
+
+3. **Reset Docker Desktop:**
+   - Open Docker Desktop settings
+   - Go to "Troubleshoot"
+   - Click "Reset to factory defaults"
+
+4. **Reinstall with WSL2 backend:**
+   - Uninstall Docker Desktop
+   - Run `wsl --unregister docker-desktop` (PowerShell admin)
+   - Reinstall Docker Desktop with WSL2 option
+
+#### Problem: "Docker daemon not running" on Windows
+
+**Error:**
+```
+error during connect: ... The system cannot find the file specified.
+```
+
+**Solution:**
+1. Open Docker Desktop manually from Start menu
+2. Wait for the whale icon to stop animating
+3. Try your command again
+
+#### Problem: Slow performance on Windows
+
+**Symptoms:**
+- Dashboard takes 10+ seconds to load
+- Container startup very slow
+
+**Solutions:**
+
+1. **Store project in WSL2 filesystem:**
+   ```powershell
+   wsl
+   cd ~
+   git clone <repo-url> big_data_architecture
+   cd big_data_architecture
+   docker compose up -d
+   ```
+
+2. **Increase Docker resources:**
+   - Docker Desktop → Settings → Resources
+   - Memory: 8GB minimum
+   - CPUs: 4 minimum
+
+3. **Create .wslconfig (in C:\Users\YourName\):**
+   ```ini
+   [wsl2]
+   memory=8GB
+   processors=4
+   swap=4GB
+   ```
+   Then restart WSL: `wsl --shutdown`
+
+4. **Exclude project folder from Windows Defender:**
+   - Windows Security → Virus & threat protection
+   - Manage settings → Exclusions → Add exclusion
+   - Add your project folder
+
+### PowerShell Script Issues
+
+#### Problem: PowerShell execution policy error
+
+**Error:**
+```
+start.ps1 cannot be loaded because running scripts is disabled on this system
+```
+
+**Solutions:**
+
+1. **Run with bypass (one-time):**
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\start.ps1
+   ```
+
+2. **Change policy for current user (permanent):**
+   ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   ```
+
+3. **Use .bat files instead:**
+   ```cmd
+   cd scripts
+   start.bat
+   ```
+
+#### Problem: "docker: command not recognized" in PowerShell
+
+**Solution:**
+1. Ensure Docker Desktop is running
+2. Restart PowerShell after Docker installation
+3. Check PATH:
+   ```powershell
+   $env:PATH -split ';' | Select-String Docker
+   ```
+4. Add Docker to PATH manually if needed:
+   ```powershell
+   $env:PATH += ";C:\Program Files\Docker\Docker\resources\bin"
+   ```
+
+### File Path Issues
+
+#### Problem: Path errors with backslashes
+
+**Error:**
+```
+No such file or directory: /c/Users/...
+```
+
+**Solution:**
+When using Docker commands, use forward slashes or escape backslashes:
+
+```powershell
+# Correct
+docker run -v "${PWD}:/app" image
+docker run -v "C:/Users/Name/project:/app" image
+
+# Incorrect
+docker run -v "C:\Users\Name\project:/app" image
+```
+
+#### Problem: Line ending issues (CRLF vs LF)
+
+**Symptoms:**
+- Scripts fail with `/bin/bash^M: bad interpreter`
+- Dockerfile commands fail
+
+**Solution:**
+1. Configure Git to handle line endings:
+   ```cmd
+   git config --global core.autocrlf input
+   ```
+
+2. Convert existing files:
+   ```powershell
+   # Install dos2unix via WSL
+   wsl -e dos2unix scripts/*.sh
+   ```
+
+3. Or use .gitattributes:
+   ```
+   *.sh text eol=lf
+   *.sql text eol=lf
+   Dockerfile text eol=lf
+   ```
+
+### Port Conflicts on Windows
+
+#### Problem: Port in use but can't find process
+
+**Solution:**
+
+1. **Find process using port:**
+   ```cmd
+   netstat -ano | findstr :3001
+   ```
+
+2. **Find process name by PID:**
+   ```cmd
+   tasklist /FI "PID eq 12345"
+   ```
+
+3. **Kill process:**
+   ```cmd
+   taskkill /PID 12345 /F
+   ```
+
+4. **Common Windows services using ports:**
+   - Port 8123: Sometimes used by Windows services
+   - Port 3000: Node.js, React dev servers
+   - Port 8000: Python HTTP servers
+
+### Windows Firewall Issues
+
+#### Problem: Can't access localhost from browser
+
+**Solutions:**
+
+1. **Allow Docker through firewall:**
+   - Windows Security → Firewall & network protection
+   - Allow an app through firewall
+   - Find and enable Docker Desktop
+
+2. **Try alternative addresses:**
+   - `http://127.0.0.1:3001` instead of `http://localhost:3001`
+   - Or use your machine's IP address
+
+3. **Temporarily disable firewall (for testing):**
+   - Windows Security → Firewall & network protection
+   - Turn off firewall for Private network
+
+### WSL2-Specific Issues
+
+#### Problem: WSL2 using too much memory
+
+**Symptoms:**
+- System slowdown
+- "Vmmem" process using high memory in Task Manager
+
+**Solution:**
+Create `C:\Users\YourName\.wslconfig`:
+```ini
+[wsl2]
+memory=4GB
+swap=2GB
+```
+Then restart: `wsl --shutdown`
+
+#### Problem: Files created in WSL have wrong permissions
+
+**Solution:**
+Add to `/etc/wsl.conf` in WSL:
+```ini
+[automount]
+options = "metadata,umask=22,fmask=11"
+```
+Then: `wsl --shutdown` and reopen WSL
+
+### Quick Windows Diagnostic Commands
+
+```powershell
+# Check Docker status
+docker info
+
+# Check WSL status
+wsl --status
+
+# List running containers
+docker ps
+
+# Check what's using a port
+netstat -ano | findstr :3001
+
+# View Docker logs
+docker compose logs -f
+
+# Reset Docker Desktop networking
+# (In Docker Desktop: Settings → Resources → Network → Reset)
+
+# Check available disk space
+wmic logicaldisk get size,freespace,caption
+
+# Check system memory
+systeminfo | findstr Memory
+```
+
 ## Still Stuck?
 
 1. Review the main [README.md](../README.md)
-2. Check [EXERCISES.md](EXERCISES.md) for examples
-3. Search [GitHub Issues](https://github.com/YOUR_REPO/issues)
-4. Ask in class or office hours
+2. **Windows users:** Check [WINDOWS_SETUP.md](WINDOWS_SETUP.md)
+3. Check [EXERCISES.md](EXERCISES.md) for examples
+4. Search [GitHub Issues](https://github.com/YOUR_REPO/issues)
+5. Ask in class or office hours
